@@ -1,0 +1,25 @@
+
+This Nagios plugin checks status of Monit server using its XML status.
+
+Unmonitored status causes plugin to return WARNING state, all other failures return CRITICAL state.
+
+Usage: check_monit.py [options]
+
+Options:
+  -h, --help            show this help message and exit
+  -H HOST, --host=HOST  Hostname or IP address
+  -p PORT, --port=PORT  Port (Default: 2812)
+  -s, --ssl             Use SSL
+  -u USERNAME, --username=USERNAME
+                        Username
+  -P PASSWORD, --password=PASSWORD
+                        Password
+
+Nagios command definition looks like this:
+
+define command{
+        command_name    check_monit
+        command_line    $USER1$/check_monit.py -H $HOSTADDRESS$ -p 1234 -s -u $USER3$ -P $USER4$
+}
+
+
