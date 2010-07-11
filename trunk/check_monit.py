@@ -3,7 +3,8 @@
 import httplib
 from optparse import OptionParser
 import sys 
-import xml.dom.minidom
+import xml.etree.ElementTree
+import re
 
 svc_types = {
     'FILESYSTEM': '0',
@@ -22,6 +23,10 @@ warnings = []
 errors = []
 totsvcs = 0
 
+svc_includere = None
+svc_excludere = None
+opts = None
+
 def ok(message):
     print "OK: %s"%message
     sys.exit(0)
@@ -38,7 +43,7 @@ def unknown(message):
     print "UNKNOWN: %s"%message
     sys.exit(3)
 
-def get_status(opts):
+def get_status():
     if opts.ssl is True:
         HTTPClass = httplib.HTTPSConnection
     else:
@@ -61,45 +66,45 @@ def get_status(opts):
     except Exception, e:
         critical('Exception: %s'%str(e))
 
-def getText(node,elementname):
-    result = []
-    for node in node.getElementsByTagName(elementname): 
-        if node.nodeType == node.TEXT_NODE:
-            result.append(node.data)
-        for subnode in node.childNodes:
-            if subnode.nodeType in (subnode.TEXT_NODE, subnode.CDATA_SECTION_NODE):
-                result.append(subnode.data)
-    return ''.join(result)
+def process_ystem(service):
+    system = service.find('system')
 
-def process_service(opts,svcnode):
-    #print svcnode.toprettyxml()
+def process_service(service):
     global totsvcs
-    svctype_num = svcnode.attributes.get('type').nodeValue
+    svctype_num = service.get('type')
+    #if svctype_num == "5": process_system(service)
     svctype = svc_types.get(svctype_num,svctype_num)
-    svcname = getText(svcnode, 'name')
-    monitor = getText(svcnode, 'monitor')
-    status_num = getText(svcnode, 'status')
+    svcname = service.find('name').text
+    if svc_excludere and re.match(svc_excludere,svcname): return
+    if svc_includere and not re.match(svc_includere,svcname): return
+    monitor = service.find('monitor').text
+    status_num = service.find('status').text
     totsvcs += 1
     
     if not monitor == "1":
         warnings.append('%s %s is unmonitored'%(svctype, svcname))
-
+    
     if not status_num == "0":
-        status_message = getText(svcnode, 'status_message')
+        status_message = service.find('status_message').text
         errors.append('%s %s: %s'%(svctype,svcname,status_message))
 
-def process_status(opts,status):
-    dom = xml.dom.minidom.parseString(status)
-    for svcnode in dom.getElementsByTagName('service'):
-        process_service(opts,svcnode)
+def process_status(status):
+    #from xml.dom import minidom
+    #print xml.dom.minidom.parseString(status).toprettyxml()
+    tree = xml.etree.ElementTree.fromstring(status)
+    for service in  tree.findall('service'):
+        process_service(service)
 
 def main():
+    global opts, svc_includere, svc_excludere
     p = OptionParser()
     p.add_option("-H","--host", dest="host", help="Hostname or IP address")
     p.add_option("-p","--port", dest="port", type="int", default=2812, help="Port (Default: %default)")
     p.add_option("-s","--ssl", dest="ssl", action="store_true", default=False, help="Use SSL")
     p.add_option("-u","--username", dest="username", help="Username")
     p.add_option("-P","--password", dest="password", help="Password")
+    p.add_option("-i","--include", dest="svc_include", help="Services to include into monitoring")
+    p.add_option("-e","--exclude", dest="svc_exclude", help="Services to exclude from monitoring")
     (opts, args) = p.parse_args()
 
     if not opts.host:
@@ -107,7 +112,10 @@ def main():
         print "For full usage instructions please invoke with -h option\n"
         sys.exit(1)
 
-    process_status(opts,get_status(opts))
+    if opts.svc_include: svc_includere = re.compile(opts.svc_include)
+    if opts.svc_exclude: svc_excludere = re.compile(opts.svc_exclude)
+
+    process_status(get_status())
     
     if errors:
         critical('%s'%'; '.join(errors))
@@ -115,7 +123,7 @@ def main():
     if warnings:
         warning('%s'%'; '.join(warnings))
 
-    ok('Total %i services monitored'%totsvcs)
+    ok('Total %i services are monitored'%totsvcs)
 
 
 if __name__ == '__main__':
