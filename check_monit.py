@@ -19,6 +19,11 @@ svc_types = {
 
 for (k, v) in svc_types.items(): svc_types[v] = k
 
+xml_hacks = (
+    (re.compile(r"<request>(.*?)</request>",flags=re.MULTILINE), (r"<request><![CDATA[\1]]></request>")),
+)
+
+
 warnings = []
 errors = []
 totsvcs = 0
@@ -89,8 +94,11 @@ def process_service(service):
         errors.append('%s %s: %s'%(svctype,svcname,status_message))
 
 def process_status(status):
+    for regex, replacement in xml_hacks:
+        status = re.sub(regex, replacement,status)
     #from xml.dom import minidom
     #print xml.dom.minidom.parseString(status).toprettyxml()
+    #print status
     tree = xml.etree.ElementTree.fromstring(status)
     for service in  tree.findall('service'):
         process_service(service)
@@ -103,8 +111,8 @@ def main():
     p.add_option("-s","--ssl", dest="ssl", action="store_true", default=False, help="Use SSL")
     p.add_option("-u","--username", dest="username", help="Username")
     p.add_option("-P","--password", dest="password", help="Password")
-    p.add_option("-i","--include", dest="svc_include", help="Services to include into monitoring")
-    p.add_option("-e","--exclude", dest="svc_exclude", help="Services to exclude from monitoring")
+    p.add_option("-i","--include", dest="svc_include", help="Regular expression for service(s) to include into monitoring")
+    p.add_option("-e","--exclude", dest="svc_exclude", help="Regular expression for service(s) to exclude from monitoring")
     (opts, args) = p.parse_args()
 
     if not opts.host:
