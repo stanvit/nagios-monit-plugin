@@ -138,11 +138,15 @@ def process_service(service):
     svcname = service.find('name').text
     if svc_excludere and re.match(svc_excludere,svcname): return
     if svc_includere and not re.match(svc_includere,svcname): return
-    monitor = service.find('monitor').text
+    try:
+        monitor = int(service.find('monitor').text)
+    except error.ValueError:
+        if opts.debug: print "Can't determine service status"
+        return
     status_num = service.find('status').text
     services_monitored.append(svcname)
     
-    if not monitor == "1":
+    if not int(monitor) & 1:
         warnings.append('%s %s is unmonitored'%(svctype, svcname))
     
     if not status_num == "0":
