@@ -150,8 +150,15 @@ def process_service(service):
         warnings.append('%s %s is unmonitored'%(svctype, svcname))
     
     if not status_num == "0":
-        status_message = service.find('status_message').text
-        errors.append('%s %s: %s'%(svctype,svcname,status_message))
+        try:
+            msg = "%s %s: %s" % (svctype, svcname,
+                                 service.find('status_message').text)
+        except AttributeError:
+            msg = "%s %s" % (svctype, svcname)
+        if opts.svc_warn and re.match(opts.svc_warn, svcname):
+            warnings.append(msg)
+        else:
+            errors.append(msg)
 
 def process_monit_response(response):
     """Processes (hopefelly) XML response from monit"""
@@ -179,6 +186,7 @@ def main():
     p.add_option("-s","--ssl", dest="ssl", action="store_true", default=False, help="Use SSL")
     p.add_option("-u","--username", dest="username", help="Username")
     p.add_option("-P","--password", dest="password", help="Password")
+    p.add_option("-w","--warn-only", dest="svc_warn", help="Regular expression for service(s) to warn only if failed")
     p.add_option("-i","--include", dest="svc_include", help="Regular expression for service(s) to include into monitoring")
     p.add_option("-e","--exclude", dest="svc_exclude", help="Regular expression for service(s) to exclude from monitoring")
     p.add_option("-d","--debug", dest="debug", action="store_true", default=False, help="Print all debugging info")
