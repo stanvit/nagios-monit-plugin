@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-VERSION="%prog 1.2"
+VERSION="%prog 1.3"
 
 import httplib
 from optparse import OptionParser
@@ -46,6 +46,7 @@ system_info = []
 
 warnings = []
 errors = []
+oks = []
 
 services_monitored = []
 perfdata = []
@@ -197,6 +198,8 @@ def process_service(service):
             warnings.append(msg)
         else:
             errors.append(msg)
+    else:
+        oks.append("%s %s" % (svctype, svcname))
 
 def process_monit_response(response):
     """Processes (hopefelly) XML response from monit"""
@@ -233,6 +236,10 @@ def main():
     p.add_option("-M","--memory", dest="process_mem", action="store_true", default=False, help="Display memory performance data")
     p.add_option("-C","--cpu", dest="process_cpu", action="store_true", default=False, help="Display cpu performance data")
     p.add_option("-L","--load", dest="process_la", action="store_true", default=False, help="Display load average performance data")
+    p.add_option("-o", "--states-perfdata", dest="states_perfdata",
+                 action="store_true", default=False,
+                 help="Add the number of services in ok/warn/critical states"
+                 " to perfdata")
     (opts, args) = p.parse_args()
 
     if not opts.host:
@@ -247,6 +254,9 @@ def main():
         svc_perfdata = re.compile(opts.svc_perfdata)
 
     process_monit_response(get_status())
+    if opts.states_perfdata:
+        perfdata.append("state_ok=%i state_warning=%i state_critical=%i" % (
+            len(oks), len(warnings), len(errors)))
     if perfdata:
         perfdata_string = ' | ' + ' '.join(perfdata)
     
