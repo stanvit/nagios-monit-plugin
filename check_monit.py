@@ -57,6 +57,10 @@ def unknown(message):
     print "UNKNOWN: %s%s"%(message,perfdata_string)
     sys.exit(3)
 
+def debug_print(text):
+    if opts.debug:
+        print text
+
 def get_status():
     if opts.ssl is True:
         HTTPClass = httplib.HTTPSConnection
@@ -80,48 +84,50 @@ def get_status():
     except Exception, e:
         critical('Exception: %s'%str(e))
 
+def find_existing_prefix(element, prefixes):
+    for prefix in prefixes:
+        if element.find(prefix) != None:
+            return prefix
+    return None
+
 def process_system_load(service):
-    prefix = "system/load"
-    if not service.find(prefix):
-        prefix = "load"
-        if not service.find(prefix):
-            if opts.debug: print "Can't find load info for performance data"
-            return
+    prefix = find_existing_prefix(service, ["system/load", "load"])
+    if prefix is None:
+        debug_print("Can't find load info for performance data")
+        return
+
     avg01 = service.find('%s/avg01'%prefix).text
     avg05 = service.find('%s/avg05'%prefix).text
     avg15 = service.find('%s/avg15'%prefix).text
     perfdata.append('load=%s;%s;%s'%(avg01,avg05,avg15))
 
 def process_system_cpu(service):
-    prefix = "system/cpu"
-    if not service.find(prefix):
-        prefix = "cpu"
-        if not service.find(prefix):
-            if opts.debug: print "Can't find load info for performance data"
-            return
+    prefix = find_existing_prefix(service, ["system/cpu", "cpu"])
+    if prefix is None:
+        debug_print("Can't find CPU info for performance data")
+        return
+
     cpu_u = service.find('%s/user'%prefix).text
     cpu_s = service.find('%s/system'%prefix).text
     cpu_w = service.find('%s/wait'%prefix).text
     perfdata.append('cpu_u=%s cpu_s=%s cpu_w=%s'%(cpu_u,cpu_s,cpu_w))
 
 def process_system_mem(service):
-    prefix = "system/memory"
-    if not service.find(prefix):
-        prefix = "memory"
-        if not service.find(prefix):
-            if opts.debug: print "Can't find load info for performance data"
-            return
+    prefix = find_existing_prefix(service, ["system/memory", "memory"])
+    if prefix is None:
+        debug_print("Can't find memory info for performance data")
+        return
+
     kb = service.find('%s/kilobyte'%prefix).text
     pct = service.find('%s/percent'%prefix).text
     perfdata.append('mem=%s mem_pct=%s'%(kb,pct))
 
 def process_system_swap(service):
-    prefix = "system/swap"
-    if not service.find(prefix):
-        prefix = "swap"
-        if not service.find(prefix):
-            if opts.debug: print "Can't find load info for performance data"
-            return
+    prefix = find_existing_prefix(service, ["system/swap", "swap"])
+    if prefix is None:
+        debug_print("Can't find swap info for performance data")
+        return
+
     kb = service.find('%s/kilobyte'%prefix).text
     pct = service.find('%s/percent'%prefix).text
     perfdata.append('swap=%s swap_pct=%s'%(kb,pct))
@@ -143,7 +149,7 @@ def process_service(service):
     try:
         monitor = int(service.find('monitor').text)
     except error.ValueError:
-        if opts.debug: print "Can't determine service status"
+        debug_print("Can't determine service status")
         return
     status_num = service.find('status').text
     services_monitored.append(svcname)
