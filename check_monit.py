@@ -17,7 +17,22 @@ svc_types = {
     'SYSTEM': '5',
     'FIFO': '6',
     'STATUS': '7',
-} 
+}
+
+svctype_metrics = {
+    'PROCESS': (
+        (('memory/percent',), 'mem_pct'),
+        (('memory/kilobyte',), 'mem'),
+        (('cpu/percent',), 'cpu'),
+    ),
+    'FILESYSTEM': (
+        (('block/percent',), 'block_pct'),
+        (('inode/percent',), 'inode_pct'),
+    ),
+    'FILE': (
+        (('size',), 'size'),
+    ),
+}
 
 for (k, v) in svc_types.items(): svc_types[v] = k
 
@@ -39,6 +54,7 @@ perfdata_string = ''
 
 svc_includere = None
 svc_excludere = None
+svc_perfdata = None
 opts = None
 
 def ok(message):
@@ -132,6 +148,14 @@ def process_system_swap(service):
     pct = service.find('%s/percent'%prefix).text
     perfdata.append('swap=%s swap_pct=%s'%(kb,pct))
 
+def process_perfdata_svc(service, paths_metrics, name):
+    for paths, metric in paths_metrics:
+        for path in paths:
+            element = service.find(path)
+            if element != None:
+                perfdata.append("%s_%s=%s" % (name, metric, element.text))
+                break
+
 def process_service(service):
     svctype_num = service.get('type')
     if svctype_num == "5":
@@ -142,10 +166,16 @@ def process_service(service):
         if opts.process_mem:
             process_system_mem(service)
             process_system_swap(service)
-    svctype = svc_types.get(svctype_num,svctype_num)
+    svctype = svc_types.get(svctype_num, svctype_num)
     svcname = service.find('name').text
-    if svc_excludere and re.match(svc_excludere,svcname): return
-    if svc_includere and not re.match(svc_includere,svcname): return
+    if svc_perfdata and re.match(svc_perfdata, svcname):
+        metrics = svctype_metrics.get(svctype, None)
+        if metrics:
+            process_perfdata_svc(service, metrics, svcname)
+    if svc_excludere and re.match(svc_excludere, svcname):
+        return
+    if svc_includere and not re.match(svc_includere,svcname):
+        return
     try:
         monitor = int(service.find('monitor').text)
     except error.ValueError:
@@ -187,7 +217,7 @@ def process_monit_response(response):
         if infoval is not None: system_info.append('%s'%infoval.text)
 
 def main():
-    global opts, svc_includere, svc_excludere, perfdata_string
+    global opts, svc_includere, svc_excludere, svc_perfdata, perfdata_string
     p = OptionParser(usage="Usage: %prog -H <host> [<options>]", version=VERSION)
     p.add_option("-H","--host", dest="host", help="Hostname or IP address")
     p.add_option("-p","--port", dest="port", type="int", default=2812, help="Port (Default: %default)")
@@ -197,6 +227,7 @@ def main():
     p.add_option("-w","--warn-only", dest="svc_warn", help="Regular expression for service(s) to warn only if failed")
     p.add_option("-i","--include", dest="svc_include", help="Regular expression for service(s) to include into monitoring")
     p.add_option("-e","--exclude", dest="svc_exclude", help="Regular expression for service(s) to exclude from monitoring")
+    p.add_option("-S","--service-perfdata", dest="svc_perfdata", help="Regular expression for service(s) to show performance data for")
     p.add_option("-d","--debug", dest="debug", action="store_true", default=False, help="Print all debugging info")
     p.add_option("-v","--verbose", dest="verbose", action="store_true", default=False, help="Verbose plugin response")
     p.add_option("-M","--memory", dest="process_mem", action="store_true", default=False, help="Display memory performance data")
@@ -208,8 +239,12 @@ def main():
         p.error("No <host> defined!")
         sys.exit(1)
 
-    if opts.svc_include: svc_includere = re.compile(opts.svc_include)
-    if opts.svc_exclude: svc_excludere = re.compile(opts.svc_exclude)
+    if opts.svc_include:
+        svc_includere = re.compile(opts.svc_include)
+    if opts.svc_exclude:
+        svc_excludere = re.compile(opts.svc_exclude)
+    if opts.svc_perfdata:
+        svc_perfdata = re.compile(opts.svc_perfdata)
 
     process_monit_response(get_status())
     if perfdata:
