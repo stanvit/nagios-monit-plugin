@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-VERSION="%prog 1.1"
+VERSION="%prog 1.2"
 
 import httplib
 from optparse import OptionParser
@@ -22,7 +22,9 @@ svc_types = {
 for (k, v) in svc_types.items(): svc_types[v] = k
 
 xml_hacks = (
-    (re.compile(r"<request>(.*?)</request>",flags=re.MULTILINE), (r"<request><![CDATA[\1]]></request>")),
+    (re.compile(r"<request>(?!<!\[CDATA\[)(?P<request>.*?)</request>",
+                flags=re.MULTILINE),
+     r"<request><![CDATA[\g<request>]]></request>"),
 )
 
 system_info = []
