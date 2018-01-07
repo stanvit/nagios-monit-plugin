@@ -11,6 +11,7 @@ Options:
   -H HOST, --host=HOST  Hostname or IP address
   -p PORT, --port=PORT  Port (Default: 2812)
   -s, --ssl             Use SSL
+  -k, --insecure        Skip SSL certificate verification
   -u USERNAME, --username=USERNAME
                         Username
   -P PASSWORD, --password=PASSWORD

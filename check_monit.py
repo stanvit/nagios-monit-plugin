@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-VERSION="%prog 1.3"
+VERSION="%prog 1.4"
 
 import httplib
 from optparse import OptionParser
@@ -80,6 +80,14 @@ def debug_print(text):
 
 def get_status():
     if opts.ssl is True:
+        if opts.ignore_cert:
+            import ssl
+            try:
+                # Python 2.7.10+
+                ssl._create_default_https_context = ssl._create_unverified_context
+            except AttributeError:
+                # Python < 2.7.9
+                pass
         HTTPClass = httplib.HTTPSConnection
     else:
         HTTPClass = httplib.HTTPConnection
@@ -225,6 +233,7 @@ def main():
     p.add_option("-H","--host", dest="host", help="Hostname or IP address")
     p.add_option("-p","--port", dest="port", type="int", default=2812, help="Port (Default: %default)")
     p.add_option("-s","--ssl", dest="ssl", action="store_true", default=False, help="Use SSL")
+    p.add_option("-k","--insecure", dest="ignore_cert", action="store_true", default=False, help="Skip SSL certificate verification")
     p.add_option("-u","--username", dest="username", help="Username")
     p.add_option("-P","--password", dest="password", help="Password")
     p.add_option("-w","--warn-only", dest="svc_warn", help="Regular expression for service(s) to warn only if failed")
