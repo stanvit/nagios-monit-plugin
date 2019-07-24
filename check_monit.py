@@ -32,6 +32,9 @@ svctype_metrics = {
     'FILE': (
         (('size',), 'size'),
     ),
+    'STATUS': (
+        (('program/output',), 'output'),
+    ),
 }
 
 for (k, v) in svc_types.items(): svc_types[v] = k
