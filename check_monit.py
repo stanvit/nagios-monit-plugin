@@ -101,14 +101,16 @@ def get_status():
 
     if opts.username and opts.password:
         import base64
-        headers['Authorization'] = 'Basic ' + (base64.encodestring(opts.username + ':' + opts.password)).strip()
+        headers['Authorization'] = 'Basic ' + base64.b64encode(
+            ('%s:%s' % (opts.username, opts.password)).encode('ascii')
+        ).decode('ascii')
 
     try:
         connection.request('GET','/_status?format=xml',headers=headers)
         response = connection.getresponse()
         if not response.status == 200:
             critical('Monit HTTP response: %i:%s'%(response.status, response.reason))
-        return response.read()
+        return response.read().decode('utf8')
     except Exception as e:
         critical('Exception: %s'%str(e))
 
