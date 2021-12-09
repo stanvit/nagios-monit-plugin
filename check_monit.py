@@ -1,10 +1,15 @@
 #!/usr/bin/env python
 
-VERSION="%prog 1.4"
+from __future__ import print_function
 
-import httplib
+VERSION="%prog 1.5"
+
+try:
+    import http.client as httplib
+except ImportError:
+    import httplib
 from optparse import OptionParser
-import sys 
+import sys
 import xml.etree.ElementTree
 import re
 
@@ -37,7 +42,7 @@ svctype_metrics = {
     ),
 }
 
-for (k, v) in svc_types.items(): svc_types[v] = k
+for (k, v) in list(svc_types.items()): svc_types[v] = k
 
 xml_hacks = (
     (re.compile(r"<request>(?!<!\[CDATA\[)(?P<request>.*?)</request>",
@@ -62,24 +67,24 @@ svc_perfdata = None
 opts = None
 
 def ok(message):
-    print "OK: %s%s"%(message,perfdata_string)
+    print("OK: %s%s"%(message,perfdata_string))
     sys.exit(0)
 
 def warning(message):
-    print "WARNING: %s%s"%(message,perfdata_string)
+    print("WARNING: %s%s"%(message,perfdata_string))
     sys.exit(1)
 
 def critical(message):
-    print "CRITICAL: %s%s"%(message,perfdata_string)
+    print("CRITICAL: %s%s"%(message,perfdata_string))
     sys.exit(2)
 
 def unknown(message):
-    print "UNKNOWN: %s%s"%(message,perfdata_string)
+    print("UNKNOWN: %s%s"%(message,perfdata_string))
     sys.exit(3)
 
 def debug_print(text):
     if opts.debug:
-        print text
+        print(text)
 
 def get_status():
     if opts.ssl is True:
@@ -101,15 +106,17 @@ def get_status():
 
     if opts.username and opts.password:
         import base64
-        headers['Authorization'] = 'Basic ' + (base64.encodestring(opts.username + ':' + opts.password)).strip()
-    
+        headers['Authorization'] = 'Basic ' + base64.b64encode(
+            ('%s:%s' % (opts.username, opts.password)).encode('ascii')
+        ).decode('ascii')
+
     try:
         connection.request('GET','/_status?format=xml',headers=headers)
         response = connection.getresponse()
         if not response.status == 200:
             critical('Monit HTTP response: %i:%s'%(response.status, response.reason))
-        return response.read()
-    except Exception, e:
+        return response.read().decode('utf8')
+    except Exception as e:
         critical('Exception: %s'%str(e))
 
 def find_existing_prefix(element, prefixes):
@@ -195,10 +202,10 @@ def process_service(service):
         return
     status_num = service.find('status').text
     services_monitored.append(svcname)
-    
+
     if not int(monitor) & 1:
         warnings.append('%s %s is unmonitored'%(svctype, svcname))
-    
+
     if not status_num == "0":
         try:
             msg = "%s %s: %s" % (svctype, svcname,
@@ -216,16 +223,16 @@ def process_monit_response(response):
     """Processes (hopefelly) XML response from monit"""
     for regex, replacement in xml_hacks:
         response = re.sub(regex, replacement, response)
-    
+
     if opts.debug:
-        print "="*80
-        print "| Monit response: "
-        print "="*80
-        print response
+        print("="*80)
+        print("| Monit response: ")
+        print("="*80)
+        print(response)
     tree = xml.etree.ElementTree.fromstring(response)
     for service in tree.findall('service'):
         process_service(service)
-    for infokey in ['server/localhostname', 'server/version', 
+    for infokey in ['server/localhostname', 'server/version',
         'platform/name', 'platform/machine', 'platform/release', 'platform/version']:
         infoval = tree.find(infokey)
         if infoval is not None: system_info.append('%s'%infoval.text)
@@ -271,7 +278,7 @@ def main():
             len(oks), len(warnings), len(errors)))
     if perfdata:
         perfdata_string = ' | ' + ' '.join(perfdata)
-    
+
     if errors:
         critical('%s'%'; '.join(errors))
 
@@ -285,4 +292,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
