@@ -1,8 +1,13 @@
 #!/usr/bin/env python
 
+from __future__ import print_function
+
 VERSION="%prog 1.5"
 
-import http.client
+try:
+    import http.client as httplib
+except ImportError:
+    import httplib
 from optparse import OptionParser
 import sys
 import xml.etree.ElementTree
@@ -91,9 +96,9 @@ def get_status():
             except AttributeError:
                 # Python < 2.7.9
                 pass
-        HTTPClass = http.client.HTTPSConnection
+        HTTPClass = httplib.HTTPSConnection
     else:
-        HTTPClass = http.client.HTTPConnection
+        HTTPClass = httplib.HTTPConnection
 
     connection = HTTPClass(opts.host,opts.port)
 
