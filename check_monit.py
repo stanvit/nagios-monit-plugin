@@ -81,6 +81,7 @@ output_string = ''
 svc_includere = None
 svc_excludere = None
 svc_perfdata = None
+types_perfdata = []
 program_output = None
 opts = None
 
@@ -226,7 +227,7 @@ def process_service(service):
     if svctype_num == svc_types['PROGRAM']:
         if program_output and re.match(program_output, svcname):
             process_program_output(service, svcname)
-    if svc_perfdata and re.match(svc_perfdata, svcname):
+    if svctype_num in types_perfdata or (svc_perfdata and re.match(svc_perfdata, svcname)):
         metrics = svctype_metrics.get(svctype, None)
         if metrics:
             process_perfdata_svc(service, metrics, svcname)
@@ -292,7 +293,7 @@ def process_monit_response(response):
         if infoval is not None: system_info.append('%s'%infoval.text)
 
 def main():
-    global opts, svc_includere, svc_excludere, svc_perfdata, program_output, perfdata_string, output_string, maintenance
+    global opts, svc_includere, svc_excludere, svc_perfdata, types_perfdata, program_output, perfdata_string, output_string, maintenance
     p = OptionParser(usage="Usage: %prog -H <host> [<options>]", version=VERSION)
     p.add_option("-H","--host", dest="host", help="Hostname or IP address")
     p.add_option("-p","--port", dest="port", type="int", default=2812, help="Port (Default: %default)")
@@ -304,6 +305,7 @@ def main():
     p.add_option("-i","--include", dest="svc_include", help="Regular expression for service(s) to include into monitoring")
     p.add_option("-e","--exclude", dest="svc_exclude", help="Regular expression for service(s) to exclude from monitoring")
     p.add_option("-S","--service-perfdata", dest="svc_perfdata", help="Regular expression for service(s) to show performance data for")
+    p.add_option("-T","--types-perfdata", dest="types_perfdata", action="append", help="Service type(s) to show performance data for [%s], can be used multiple times" % ', '.join(svctype_metrics.keys()))
     p.add_option("-O","--program-output", dest="program_output", help="Regular expression for service(s) to show program output for")
     p.add_option("-d","--debug", dest="debug", action="store_true", default=False, help="Print all debugging info")
     p.add_option("-v","--verbose", dest="verbose", action="store_true", default=False, help="Verbose plugin response")
@@ -329,9 +331,17 @@ def main():
         svc_excludere = re.compile(opts.svc_exclude)
     if opts.svc_perfdata:
         svc_perfdata = re.compile(opts.svc_perfdata)
+    if opts.types_perfdata:
+        for i in opts.types_perfdata:
+            if not i in svc_types:
+                p.error("Service type %s is unknown" % i)
+                sys.exit(1)
+            if not i in svctype_metrics:
+                p.error("Metrics for Service type %s are not supported" % i)
+                sys.exit(1)
+            types_perfdata.append(svc_types[i])
     if opts.program_output:
         program_output = re.compile(opts.program_output)
-
 
     if opts.maintenance and os.path.isfile(opts.maintenance):
         debug_print("Maintenance File: " + opts.maintenance)
