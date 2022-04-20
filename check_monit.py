@@ -29,7 +29,7 @@ svc_types = {
     'HOST': '4',
     'SYSTEM': '5',
     'FIFO': '6',
-    'STATUS': '7',
+    'PROGRAM': '7',
     'NET': '8',
 }
 
@@ -73,28 +73,31 @@ oks = []
 
 services_monitored = []
 perfdata = []
+output = []
 
 perfdata_string = ''
+output_string = ''
 
 svc_includere = None
 svc_excludere = None
 svc_perfdata = None
+program_output = None
 opts = None
 
 def ok(message):
-    print("OK: %s%s"%(message,perfdata_string))
+    print("OK: %s%s%s"%(message,output_string,perfdata_string))
     sys.exit(0)
 
 def warning(message):
-    print("WARNING: %s%s"%(message,perfdata_string))
+    print("WARNING: %s%s%s"%(message,output_string,perfdata_string))
     sys.exit(1)
 
 def critical(message):
-    print("CRITICAL: %s%s"%(message,perfdata_string))
+    print("CRITICAL: %s%s%s"%(message,output_string,perfdata_string))
     sys.exit(2)
 
 def unknown(message):
-    print("UNKNOWN: %s%s"%(message,perfdata_string))
+    print("UNKNOWN: %s%s%s"%(message,output_string,perfdata_string))
     sys.exit(3)
 
 def debug_print(text):
@@ -202,9 +205,15 @@ def process_perfdata_svc(service, paths_metrics, name):
                     perfdata.append("%s_%s=%s" % (name, metric, element.text))
                 break
 
+def process_program_output(service, name):
+    out = service.find('program/output').text
+    if out is not None:
+        out = out.replace('\n','\n%s: ' % name)
+        output.append("%s: %s" % (name, out))
+
 def process_service(service):
     svctype_num = service.get('type')
-    if svctype_num == "5":
+    if svctype_num == svc_types['SYSTEM']:
         if opts.process_la:
             process_system_load(service)
         if opts.process_cpu:
@@ -214,6 +223,9 @@ def process_service(service):
             process_system_swap(service)
     svctype = svc_types.get(svctype_num, svctype_num)
     svcname = service.find('name').text
+    if svctype_num == svc_types['PROGRAM']:
+        if program_output and re.match(program_output, svcname):
+            process_program_output(service, svcname)
     if svc_perfdata and re.match(svc_perfdata, svcname):
         metrics = svctype_metrics.get(svctype, None)
         if metrics:
@@ -280,7 +292,7 @@ def process_monit_response(response):
         if infoval is not None: system_info.append('%s'%infoval.text)
 
 def main():
-    global opts, svc_includere, svc_excludere, svc_perfdata, perfdata_string, maintenance
+    global opts, svc_includere, svc_excludere, svc_perfdata, program_output, perfdata_string, output_string, maintenance
     p = OptionParser(usage="Usage: %prog -H <host> [<options>]", version=VERSION)
     p.add_option("-H","--host", dest="host", help="Hostname or IP address")
     p.add_option("-p","--port", dest="port", type="int", default=2812, help="Port (Default: %default)")
@@ -292,6 +304,7 @@ def main():
     p.add_option("-i","--include", dest="svc_include", help="Regular expression for service(s) to include into monitoring")
     p.add_option("-e","--exclude", dest="svc_exclude", help="Regular expression for service(s) to exclude from monitoring")
     p.add_option("-S","--service-perfdata", dest="svc_perfdata", help="Regular expression for service(s) to show performance data for")
+    p.add_option("-O","--program-output", dest="program_output", help="Regular expression for service(s) to show program output for")
     p.add_option("-d","--debug", dest="debug", action="store_true", default=False, help="Print all debugging info")
     p.add_option("-v","--verbose", dest="verbose", action="store_true", default=False, help="Verbose plugin response")
     p.add_option("-M","--memory", dest="process_mem", action="store_true", default=False, help="Display memory performance data")
@@ -316,6 +329,9 @@ def main():
         svc_excludere = re.compile(opts.svc_exclude)
     if opts.svc_perfdata:
         svc_perfdata = re.compile(opts.svc_perfdata)
+    if opts.program_output:
+        program_output = re.compile(opts.program_output)
+
 
     if opts.maintenance and os.path.isfile(opts.maintenance):
         debug_print("Maintenance File: " + opts.maintenance)
@@ -327,7 +343,8 @@ def main():
             len(oks), len(warnings), len(errors)))
     if perfdata:
         perfdata_string = ' | ' + ' '.join(perfdata)
-
+    if output:
+        output_string = '\n' + '\n'.join(output)
     if errors:
         critical('%s'%'; '.join(errors))
 
