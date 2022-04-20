@@ -10,6 +10,7 @@ except ImportError:
     import httplib
 from optparse import OptionParser
 import sys
+import os
 import xml.etree.ElementTree
 import re
 
@@ -242,7 +243,12 @@ def process_service(service):
 
     elif not int(monitor) & mon_state['yes']:
         debug_print("Unmonitored: %s %s" % (svctype, svcname))
-        warnings.append('%s %s is unmonitored'%(svctype, svcname))
+        if maintenance:
+            oks.append("%s %s" % (svctype, svcname))
+        elif opts.reverse and not (opts.svc_warn and re.match(opts.svc_warn, svcname)):
+            errors.append('%s %s is unmonitored'%(svctype, svcname))
+        else:
+            warnings.append('%s %s is unmonitored'%(svctype, svcname))
 
     elif not status_num == "0":
         debug_print("Failed: %s %s" % (svctype, svcname))
@@ -251,7 +257,7 @@ def process_service(service):
                                  service.find('status_message').text)
         except AttributeError:
             msg = "%s %s" % (svctype, svcname)
-        if opts.svc_warn and re.match(opts.svc_warn, svcname):
+        if opts.reverse or (opts.svc_warn and re.match(opts.svc_warn, svcname)):
             warnings.append(msg)
         else:
             errors.append(msg)
@@ -277,7 +283,7 @@ def process_monit_response(response):
         if infoval is not None: system_info.append('%s'%infoval.text)
 
 def main():
-    global opts, svc_includere, svc_excludere, svc_perfdata, perfdata_string
+    global opts, svc_includere, svc_excludere, svc_perfdata, perfdata_string, maintenance
     p = OptionParser(usage="Usage: %prog -H <host> [<options>]", version=VERSION)
     p.add_option("-H","--host", dest="host", help="Hostname or IP address")
     p.add_option("-p","--port", dest="port", type="int", default=2812, help="Port (Default: %default)")
@@ -299,6 +305,8 @@ def main():
                  action="store_true", default=False,
                  help="Add the number of services in ok/warn/critical states"
                  " to perfdata")
+    p.add_option("-m","--maintenance", dest="maintenance", default="/run/monit.maintenance", help="If this file exist ignore all Unmonitored [/run/monit.maintenance]")
+    p.add_option("-R","--reverse", dest="reverse", action="store_true", default=False, help="Issue a Warning if a service is Failed and Critical if Unmonitored")
     (opts, args) = p.parse_args()
 
     if not opts.host:
@@ -311,6 +319,10 @@ def main():
         svc_excludere = re.compile(opts.svc_exclude)
     if opts.svc_perfdata:
         svc_perfdata = re.compile(opts.svc_perfdata)
+
+    if opts.maintenance and os.path.isfile(opts.maintenance):
+        debug_print("Maintenance File: " + opts.maintenance)
+        maintenance = True
 
     process_monit_response(get_status())
     if opts.states_perfdata:
