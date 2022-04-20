@@ -29,23 +29,33 @@ svc_types = {
     'SYSTEM': '5',
     'FIFO': '6',
     'STATUS': '7',
+    'NET': '8',
 }
 
+## https://nagios-plugins.org/doc/guidelines.html#AEN200
 svctype_metrics = {
     'PROCESS': (
-        (('memory/percent',), 'mem_pct'),
-        (('memory/kilobyte',), 'mem'),
-        (('cpu/percent',), 'cpu'),
+        (('memory/percent',), 'mem_pct', '%'),
+        (('memory/kilobyte',), 'mem', 'KB'),
+        (('cpu/percent',), 'cpu', '%'),
     ),
     'FILESYSTEM': (
-        (('block/percent',), 'block_pct'),
-        (('inode/percent',), 'inode_pct'),
+        (('block/percent',), 'block_pct', '%'),
+        (('inode/percent',), 'inode_pct', '%'),
     ),
     'FILE': (
-        (('size',), 'size'),
+        (('size',), 'size', 'B'),
     ),
     'STATUS': (
-        (('program/output',), 'output'),
+        (('program/output',), 'output', ''),
+    ),
+    'NET': (
+        (('link/download/packets/total',), 'in_pkt', 'c'),
+        (('link/download/bytes/total',), 'in_bytes', 'Bc'),
+        (('link/download/errors/total',), 'in_err', 'c'),
+        (('link/upload/packets/total',), 'out_pkt', 'c'),
+        (('link/upload/bytes/total',), 'out_bytes', 'Bc'),
+        (('link/upload/errors/total',), 'out_err', 'c'),
     ),
 }
 
@@ -152,7 +162,10 @@ def process_system_cpu(service):
     cpu_u = service.find('%s/user'%prefix).text
     cpu_s = service.find('%s/system'%prefix).text
     cpu_w = service.find('%s/wait'%prefix).text
-    perfdata.append('cpu_u=%s cpu_s=%s cpu_w=%s'%(cpu_u,cpu_s,cpu_w))
+    if opts.uom:
+        perfdata.append('cpu_u=%s%% cpu_s=%s%% cpu_w=%s%%'%(cpu_u,cpu_s,cpu_w))
+    else:
+        perfdata.append('cpu_u=%s cpu_s=%s cpu_w=%s'%(cpu_u,cpu_s,cpu_w))
 
 def process_system_mem(service):
     prefix = find_existing_prefix(service, ["system/memory", "memory"])
@@ -162,7 +175,10 @@ def process_system_mem(service):
 
     kb = service.find('%s/kilobyte'%prefix).text
     pct = service.find('%s/percent'%prefix).text
-    perfdata.append('mem=%s mem_pct=%s'%(kb,pct))
+    if opts.uom:
+        perfdata.append('mem=%s mem_pct=%s%%'%(kb,pct))
+    else:
+        perfdata.append('mem=%s mem_pct=%s'%(kb,pct))
 
 def process_system_swap(service):
     prefix = find_existing_prefix(service, ["system/swap", "swap"])
@@ -172,14 +188,20 @@ def process_system_swap(service):
 
     kb = service.find('%s/kilobyte'%prefix).text
     pct = service.find('%s/percent'%prefix).text
-    perfdata.append('swap=%s swap_pct=%s'%(kb,pct))
+    if opts.uom:
+        perfdata.append('swap=%s swap_pct=%s%%'%(kb,pct))
+    else:
+        perfdata.append('swap=%s swap_pct=%s'%(kb,pct))
 
 def process_perfdata_svc(service, paths_metrics, name):
-    for paths, metric in paths_metrics:
+    for paths, metric, uom in paths_metrics:
         for path in paths:
             element = service.find(path)
             if element != None:
-                perfdata.append("%s_%s=%s" % (name, metric, element.text))
+                if opts.uom:
+                    perfdata.append("%s_%s=%s%s" % (name, metric, element.text, uom))
+                else:
+                    perfdata.append("%s_%s=%s" % (name, metric, element.text))
                 break
 
 def process_service(service):
@@ -272,6 +294,7 @@ def main():
     p.add_option("-M","--memory", dest="process_mem", action="store_true", default=False, help="Display memory performance data")
     p.add_option("-C","--cpu", dest="process_cpu", action="store_true", default=False, help="Display cpu performance data")
     p.add_option("-L","--load", dest="process_la", action="store_true", default=False, help="Display load average performance data")
+    p.add_option("-U","--uom", dest="uom", action="store_true", default=False, help="Display units of measure in performance data")
     p.add_option("-o", "--states-perfdata", dest="states_perfdata",
                  action="store_true", default=False,
                  help="Add the number of services in ok/warn/critical states"
