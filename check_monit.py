@@ -47,9 +47,6 @@ svctype_metrics = {
     'FILE': (
         (('size',), 'size', 'B'),
     ),
-    'STATUS': (
-        (('program/output',), 'output', ''),
-    ),
     'NET': (
         (('link/download/packets/total',), 'in_pkt', 'c'),
         (('link/download/bytes/total',), 'in_bytes', 'Bc'),
