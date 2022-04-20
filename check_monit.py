@@ -13,6 +13,13 @@ import sys
 import xml.etree.ElementTree
 import re
 
+mon_state = {
+    'not'     : 0x0,
+    'yes'     : 0x1,
+    'init'    : 0x2,
+    'waiting' : 0x4
+}
+
 svc_types = {
     'FILESYSTEM': '0',
     'DIRECTORY': '1',
@@ -203,10 +210,20 @@ def process_service(service):
     status_num = service.find('status').text
     services_monitored.append(svcname)
 
-    if not int(monitor) & 1:
+    if int(monitor) & mon_state['init']:
+        debug_print("Initializing: %s %s" % (svctype, svcname))
+        oks.append("%s %s" % (svctype, svcname))
+
+    elif int(monitor) & mon_state['waiting']:
+        debug_print("Waiting: %s %s" % (svctype, svcname))
+        oks.append("%s %s" % (svctype, svcname))
+
+    elif not int(monitor) & mon_state['yes']:
+        debug_print("Unmonitored: %s %s" % (svctype, svcname))
         warnings.append('%s %s is unmonitored'%(svctype, svcname))
 
-    if not status_num == "0":
+    elif not status_num == "0":
+        debug_print("Failed: %s %s" % (svctype, svcname))
         try:
             msg = "%s %s: %s" % (svctype, svcname,
                                  service.find('status_message').text)
