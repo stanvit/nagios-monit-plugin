@@ -1,11 +1,16 @@
+# Nagios Monit plugin
 
-This Nagios plugin checks status of Monit server using its XML status.
+This Nagios plugin checks status of [Monit server](https://mmonit.com/monit/) using its XML status.
 
 Unmonitored status causes plugin to return WARNING state, all other failures return CRITICAL state.
 
-Usage: check_monit.py -H <host> [<options>]
+## Usage:
+```
+check_monit.py -H <host> [<options>]
+```
 
-Options:
+## Command line ptions:
+```
   --version             show program's version number and exit
   -h, --help            show this help message and exit
   -H HOST, --host=HOST  Hostname or IP address
@@ -27,12 +32,19 @@ Options:
   -M, --memory          Display memory performance data
   -C, --cpu             Display cpu performance data
   -L, --load            Display load average performance data
+```
+
+## Sample Nagios configuration
 
 Nagios command definition looks like this:
 
+```
 define command{
         command_name    check_monit
         command_line    $USER1$/check_monit.py -H $HOSTADDRESS$ -p 1234 -s -u $USER3$ -P $USER4$
 }
+```
 
+## License
 
+See the [LICENSE](LICENSE.txt) file for license rights and limitations (MIT).
