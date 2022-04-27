@@ -10,8 +10,16 @@ except ImportError:
     import httplib
 from optparse import OptionParser
 import sys
+import os
 import xml.etree.ElementTree
 import re
+
+mon_state = {
+    'not'     : 0x0,
+    'yes'     : 0x1,
+    'init'    : 0x2,
+    'waiting' : 0x4
+}
 
 svc_types = {
     'FILESYSTEM': '0',
@@ -21,24 +29,31 @@ svc_types = {
     'HOST': '4',
     'SYSTEM': '5',
     'FIFO': '6',
-    'STATUS': '7',
+    'PROGRAM': '7',
+    'NET': '8',
 }
 
+## https://nagios-plugins.org/doc/guidelines.html#AEN200
 svctype_metrics = {
     'PROCESS': (
-        (('memory/percent',), 'mem_pct'),
-        (('memory/kilobyte',), 'mem'),
-        (('cpu/percent',), 'cpu'),
+        (('memory/percent',), 'mem_pct', '%'),
+        (('memory/kilobyte',), 'mem', 'KB'),
+        (('cpu/percent',), 'cpu', '%'),
     ),
     'FILESYSTEM': (
-        (('block/percent',), 'block_pct'),
-        (('inode/percent',), 'inode_pct'),
+        (('block/percent',), 'block_pct', '%'),
+        (('inode/percent',), 'inode_pct', '%'),
     ),
     'FILE': (
-        (('size',), 'size'),
+        (('size',), 'size', 'B'),
     ),
-    'STATUS': (
-        (('program/output',), 'output'),
+    'NET': (
+        (('link/download/packets/total',), 'in_pkt', 'c'),
+        (('link/download/bytes/total',), 'in_bytes', 'Bc'),
+        (('link/download/errors/total',), 'in_err', 'c'),
+        (('link/upload/packets/total',), 'out_pkt', 'c'),
+        (('link/upload/bytes/total',), 'out_bytes', 'Bc'),
+        (('link/upload/errors/total',), 'out_err', 'c'),
     ),
 }
 
@@ -58,28 +73,32 @@ oks = []
 
 services_monitored = []
 perfdata = []
+output = []
 
 perfdata_string = ''
+output_string = ''
 
 svc_includere = None
 svc_excludere = None
 svc_perfdata = None
+types_perfdata = []
+program_output = None
 opts = None
 
 def ok(message):
-    print("OK: %s%s"%(message,perfdata_string))
+    print("OK: %s%s%s"%(message,output_string,perfdata_string))
     sys.exit(0)
 
 def warning(message):
-    print("WARNING: %s%s"%(message,perfdata_string))
+    print("WARNING: %s%s%s"%(message,output_string,perfdata_string))
     sys.exit(1)
 
 def critical(message):
-    print("CRITICAL: %s%s"%(message,perfdata_string))
+    print("CRITICAL: %s%s%s"%(message,output_string,perfdata_string))
     sys.exit(2)
 
 def unknown(message):
-    print("UNKNOWN: %s%s"%(message,perfdata_string))
+    print("UNKNOWN: %s%s%s"%(message,output_string,perfdata_string))
     sys.exit(3)
 
 def debug_print(text):
@@ -145,7 +164,10 @@ def process_system_cpu(service):
     cpu_u = service.find('%s/user'%prefix).text
     cpu_s = service.find('%s/system'%prefix).text
     cpu_w = service.find('%s/wait'%prefix).text
-    perfdata.append('cpu_u=%s cpu_s=%s cpu_w=%s'%(cpu_u,cpu_s,cpu_w))
+    if opts.uom:
+        perfdata.append('cpu_u=%s%% cpu_s=%s%% cpu_w=%s%%'%(cpu_u,cpu_s,cpu_w))
+    else:
+        perfdata.append('cpu_u=%s cpu_s=%s cpu_w=%s'%(cpu_u,cpu_s,cpu_w))
 
 def process_system_mem(service):
     prefix = find_existing_prefix(service, ["system/memory", "memory"])
@@ -155,7 +177,10 @@ def process_system_mem(service):
 
     kb = service.find('%s/kilobyte'%prefix).text
     pct = service.find('%s/percent'%prefix).text
-    perfdata.append('mem=%s mem_pct=%s'%(kb,pct))
+    if opts.uom:
+        perfdata.append('mem=%s mem_pct=%s%%'%(kb,pct))
+    else:
+        perfdata.append('mem=%s mem_pct=%s'%(kb,pct))
 
 def process_system_swap(service):
     prefix = find_existing_prefix(service, ["system/swap", "swap"])
@@ -165,19 +190,31 @@ def process_system_swap(service):
 
     kb = service.find('%s/kilobyte'%prefix).text
     pct = service.find('%s/percent'%prefix).text
-    perfdata.append('swap=%s swap_pct=%s'%(kb,pct))
+    if opts.uom:
+        perfdata.append('swap=%s swap_pct=%s%%'%(kb,pct))
+    else:
+        perfdata.append('swap=%s swap_pct=%s'%(kb,pct))
 
 def process_perfdata_svc(service, paths_metrics, name):
-    for paths, metric in paths_metrics:
+    for paths, metric, uom in paths_metrics:
         for path in paths:
             element = service.find(path)
             if element != None:
-                perfdata.append("%s_%s=%s" % (name, metric, element.text))
+                if opts.uom:
+                    perfdata.append("%s_%s=%s%s" % (name, metric, element.text, uom))
+                else:
+                    perfdata.append("%s_%s=%s" % (name, metric, element.text))
                 break
+
+def process_program_output(service, name):
+    out = service.find('program/output').text
+    if out is not None:
+        out = out.replace('\n','\n%s: ' % name)
+        output.append("%s: %s" % (name, out))
 
 def process_service(service):
     svctype_num = service.get('type')
-    if svctype_num == "5":
+    if svctype_num == svc_types['SYSTEM']:
         if opts.process_la:
             process_system_load(service)
         if opts.process_cpu:
@@ -187,7 +224,10 @@ def process_service(service):
             process_system_swap(service)
     svctype = svc_types.get(svctype_num, svctype_num)
     svcname = service.find('name').text
-    if svc_perfdata and re.match(svc_perfdata, svcname):
+    if svctype_num == svc_types['PROGRAM']:
+        if program_output and re.match(program_output, svcname):
+            process_program_output(service, svcname)
+    if svctype_num in types_perfdata or (svc_perfdata and re.match(svc_perfdata, svcname)):
         metrics = svctype_metrics.get(svctype, None)
         if metrics:
             process_perfdata_svc(service, metrics, svcname)
@@ -203,16 +243,31 @@ def process_service(service):
     status_num = service.find('status').text
     services_monitored.append(svcname)
 
-    if not int(monitor) & 1:
-        warnings.append('%s %s is unmonitored'%(svctype, svcname))
+    if int(monitor) & mon_state['init']:
+        debug_print("Initializing: %s %s" % (svctype, svcname))
+        oks.append("%s %s" % (svctype, svcname))
 
-    if not status_num == "0":
+    elif int(monitor) & mon_state['waiting']:
+        debug_print("Waiting: %s %s" % (svctype, svcname))
+        oks.append("%s %s" % (svctype, svcname))
+
+    elif not int(monitor) & mon_state['yes']:
+        debug_print("Unmonitored: %s %s" % (svctype, svcname))
+        if maintenance:
+            oks.append("%s %s" % (svctype, svcname))
+        elif opts.reverse and not (opts.svc_warn and re.match(opts.svc_warn, svcname)):
+            errors.append('%s %s is unmonitored'%(svctype, svcname))
+        else:
+            warnings.append('%s %s is unmonitored'%(svctype, svcname))
+
+    elif not status_num == "0":
+        debug_print("Failed: %s %s" % (svctype, svcname))
         try:
             msg = "%s %s: %s" % (svctype, svcname,
                                  service.find('status_message').text)
         except AttributeError:
             msg = "%s %s" % (svctype, svcname)
-        if opts.svc_warn and re.match(opts.svc_warn, svcname):
+        if opts.reverse or (opts.svc_warn and re.match(opts.svc_warn, svcname)):
             warnings.append(msg)
         else:
             errors.append(msg)
@@ -238,7 +293,7 @@ def process_monit_response(response):
         if infoval is not None: system_info.append('%s'%infoval.text)
 
 def main():
-    global opts, svc_includere, svc_excludere, svc_perfdata, perfdata_string
+    global opts, svc_includere, svc_excludere, svc_perfdata, types_perfdata, program_output, perfdata_string, output_string, maintenance
     p = OptionParser(usage="Usage: %prog -H <host> [<options>]", version=VERSION)
     p.add_option("-H","--host", dest="host", help="Hostname or IP address")
     p.add_option("-p","--port", dest="port", type="int", default=2812, help="Port (Default: %default)")
@@ -250,15 +305,20 @@ def main():
     p.add_option("-i","--include", dest="svc_include", help="Regular expression for service(s) to include into monitoring")
     p.add_option("-e","--exclude", dest="svc_exclude", help="Regular expression for service(s) to exclude from monitoring")
     p.add_option("-S","--service-perfdata", dest="svc_perfdata", help="Regular expression for service(s) to show performance data for")
+    p.add_option("-T","--types-perfdata", dest="types_perfdata", action="append", help="Service type(s) to show performance data for [%s], can be used multiple times" % ', '.join(svctype_metrics.keys()))
+    p.add_option("-O","--program-output", dest="program_output", help="Regular expression for service(s) to show program output for")
     p.add_option("-d","--debug", dest="debug", action="store_true", default=False, help="Print all debugging info")
     p.add_option("-v","--verbose", dest="verbose", action="store_true", default=False, help="Verbose plugin response")
     p.add_option("-M","--memory", dest="process_mem", action="store_true", default=False, help="Display memory performance data")
     p.add_option("-C","--cpu", dest="process_cpu", action="store_true", default=False, help="Display cpu performance data")
     p.add_option("-L","--load", dest="process_la", action="store_true", default=False, help="Display load average performance data")
+    p.add_option("-U","--uom", dest="uom", action="store_true", default=False, help="Display units of measure in performance data")
     p.add_option("-o", "--states-perfdata", dest="states_perfdata",
                  action="store_true", default=False,
                  help="Add the number of services in ok/warn/critical states"
                  " to perfdata")
+    p.add_option("-m","--maintenance", dest="maintenance", default="/run/monit.maintenance", help="If this file exist ignore all Unmonitored [/run/monit.maintenance]")
+    p.add_option("-R","--reverse", dest="reverse", action="store_true", default=False, help="Issue a Warning if a service is Failed and Critical if Unmonitored")
     (opts, args) = p.parse_args()
 
     if not opts.host:
@@ -271,6 +331,21 @@ def main():
         svc_excludere = re.compile(opts.svc_exclude)
     if opts.svc_perfdata:
         svc_perfdata = re.compile(opts.svc_perfdata)
+    if opts.types_perfdata:
+        for i in opts.types_perfdata:
+            if not i in svc_types:
+                p.error("Service type %s is unknown" % i)
+                sys.exit(1)
+            if not i in svctype_metrics:
+                p.error("Metrics for Service type %s are not supported" % i)
+                sys.exit(1)
+            types_perfdata.append(svc_types[i])
+    if opts.program_output:
+        program_output = re.compile(opts.program_output)
+
+    if opts.maintenance and os.path.isfile(opts.maintenance):
+        debug_print("Maintenance File: " + opts.maintenance)
+        maintenance = True
 
     process_monit_response(get_status())
     if opts.states_perfdata:
@@ -278,7 +353,8 @@ def main():
             len(oks), len(warnings), len(errors)))
     if perfdata:
         perfdata_string = ' | ' + ' '.join(perfdata)
-
+    if output:
+        output_string = '\n' + '\n'.join(output)
     if errors:
         critical('%s'%'; '.join(errors))
 
