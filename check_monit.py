@@ -2,7 +2,7 @@
 
 from __future__ import print_function
 
-VERSION="%prog 1.5"
+VERSION="%prog 1.6"
 
 try:
     import http.client as httplib
