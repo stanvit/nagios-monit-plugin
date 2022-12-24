@@ -294,6 +294,7 @@ def process_monit_response(response):
 
 def main():
     global opts, svc_includere, svc_excludere, svc_perfdata, types_perfdata, program_output, perfdata_string, output_string, maintenance
+    maintenance = False
     p = OptionParser(usage="Usage: %prog -H <host> [<options>]", version=VERSION)
     p.add_option("-H","--host", dest="host", help="Hostname or IP address")
     p.add_option("-p","--port", dest="port", type="int", default=2812, help="Port (Default: %default)")
