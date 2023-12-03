@@ -153,7 +153,7 @@ def process_system_load(service):
     avg01 = service.find('%s/avg01'%prefix).text
     avg05 = service.find('%s/avg05'%prefix).text
     avg15 = service.find('%s/avg15'%prefix).text
-    perfdata.append('load=%s;%s;%s'%(avg01,avg05,avg15))
+    perfdata.append('load1=%s load5=%s load15=%s'%(avg01,avg05,avg15))
 
 def process_system_cpu(service):
     prefix = find_existing_prefix(service, ["system/cpu", "cpu"])
